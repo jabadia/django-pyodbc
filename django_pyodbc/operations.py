@@ -36,7 +36,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         if self._is_db2 is None:
             cur = self.connection.cursor()
             try:
-                cur.execute("SELECT * FROM SYSIBM.COLUMNS FETCH FIRST 1 ROWS ONLY")
+                # commented out by RF
+                #cur.execute("SELECT * FROM SYSIBM.COLUMNS FETCH FIRST 1 ROWS ONLY")
                 self._is_db2 = True
             except Exception:
                 self._is_db2 = False
@@ -66,9 +67,11 @@ class DatabaseOperations(BaseDatabaseOperations):
         cur = self.connection.cursor()
         ver_code = None
         if not self.is_db2:
-            cur.execute("SELECT CAST(SERVERPROPERTY('ProductVersion') as varchar)")
-            ver_code = cur.fetchone()[0]
-            ver_code = int(ver_code.split('.')[0])
+            # commented out by RF
+            pass
+            #cur.execute("SELECT CAST(SERVERPROPERTY('ProductVersion') as varchar)")
+            #ver_code = cur.fetchone()[0]
+            #ver_code = int(ver_code.split('.')[0])
         if ver_code >= 11:
             self._ss_ver = 2012
         elif ver_code == 10:
@@ -219,9 +222,13 @@ class DatabaseOperations(BaseDatabaseOperations):
         Returns a quoted version of the given table, index or column name. Does
         not quote the given name if it's already been quoted.
         """
-        if name.startswith(self.left_sql_quote) and name.endswith(self.right_sql_quote):
+        #if name.startswith(self.left_sql_quote) and name.endswith(self.right_sql_quote):
+        #    return name # Quoting once is enough.
+        #return '%s%s%s' % (self.left_sql_quote, name, self.right_sql_quote)
+        # changed by RF
+        if name.startswith('"') and name.endswith('"'):
             return name # Quoting once is enough.
-        return '%s%s%s' % (self.left_sql_quote, name, self.right_sql_quote)
+        return '%s%s%s' % ('"', name.upper(), '"')  # changed by RF
 
     def random_function_sql(self):
         """
@@ -446,6 +453,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         # Force floats to the correct type
         elif value is not None and field and field.get_internal_type() == 'FloatField':
             value = float(value)
+            
+        # added by RF
+        elif field and field.get_internal_type() == 'IntegerField':
+            value = int(value)
         return value
 
     def return_insert_id(self):

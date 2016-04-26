@@ -428,10 +428,14 @@ class CursorWrapper(object):
         return tuple(fp)
 
     def execute(self, sql, params=()):
+        # print "1. sql=", sql, "; params=",params
+        print "1. sql=", sql % tuple("'%s'" % (p,) for p in params)
         self.last_sql = sql
         sql = self.format_sql(sql, len(params))
+        # print "2. sql=", sql, "; params=",params
         params = self.format_params(params)
         self.last_params = params
+        # print "3. sql=", sql, "; params=",params
         try:
             return self.cursor.execute(sql, params)
         except IntegrityError:
