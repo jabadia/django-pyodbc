@@ -274,6 +274,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         if 'extra_params' in options:
             cstr_parts.append(options['extra_params'])
+
+        # always enable efficient conversion to Python types: see https://www.exasol.com/support/browse/EXASOL-898
+        cstr_parts.append('INTTYPESINRESULTSIFPOSSIBLE=y')
+
         connectionstring = ';'.join(cstr_parts)
         return connectionstring
 
