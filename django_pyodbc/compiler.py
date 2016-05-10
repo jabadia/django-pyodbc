@@ -104,15 +104,10 @@ class SQLCompiler(compiler.SQLCompiler):
             values.append(value)
         return row[:index_extra_select] + tuple(values)
 
-    def _fix_aggregates(self):
-        pass
-
     def as_sql(self, with_limits=True, with_col_aliases=False):
         # Django #12192 - Don't execute any DB query when QS slicing results in limit 0
         if with_limits and self.query.low_mark == self.query.high_mark:
             return '', ()
-        
-        self._fix_aggregates()
         
         self._using_row_number = False
         
@@ -579,11 +574,6 @@ class SQLDeleteCompiler(compiler.SQLDeleteCompiler, SQLCompiler):
 
 class SQLUpdateCompiler(compiler.SQLUpdateCompiler, SQLCompiler):
     pass
-
-class SQLAggregateCompiler(compiler.SQLAggregateCompiler, SQLCompiler):
-    def as_sql(self, qn=None):
-        self._fix_aggregates()
-        return super(SQLAggregateCompiler, self).as_sql(qn=qn)
 
 # django's compiler.SQLDateCompiler was removed in 1.8
 if DjangoVersion[0] >= 1 and DjangoVersion[1] >= 8:
