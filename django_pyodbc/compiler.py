@@ -104,39 +104,10 @@ class SQLCompiler(compiler.SQLCompiler):
             values.append(value)
         return row[:index_extra_select] + tuple(values)
 
-    def _fix_aggregates(self):
-        """
-        MSSQL doesn't match the behavior of the other backends on a few of
-        the aggregate functions; different return type behavior, different
-        function names, etc.
-        
-        MSSQL's implementation of AVG maintains datatype without proding. To
-        match behavior of other django backends, it needs to not drop remainders.
-        E.g. AVG([1, 2]) needs to yield 1.5, not 1
-        """
-        for alias, aggregate in self.query.aggregate_select.items():
-            if aggregate.sql_function == 'AVG':# and self.connection.cast_avg_to_float:
-                # Embed the CAST in the template on this query to
-                # maintain multi-db support.
-                self.query.aggregate_select[alias].sql_template = \
-                    '%(function)s(CAST(%(field)s AS FLOAT))'
-            # translate StdDev function names
-            elif aggregate.sql_function == 'STDDEV_SAMP':
-                self.query.aggregate_select[alias].sql_function = 'STDEV'
-            elif aggregate.sql_function == 'STDDEV_POP':
-                self.query.aggregate_select[alias].sql_function = 'STDEVP'
-            # translate Variance function names
-            elif aggregate.sql_function == 'VAR_SAMP':
-                self.query.aggregate_select[alias].sql_function = 'VAR'
-            elif aggregate.sql_function == 'VAR_POP':
-                self.query.aggregate_select[alias].sql_function = 'VARP'
-
-    def as_sql(self, with_limits=True, with_col_aliases=False):
+    def as_sql(self, with_limits=True, with_col_aliases=False, subquery=False):
         # Django #12192 - Don't execute any DB query when QS slicing results in limit 0
         if with_limits and self.query.low_mark == self.query.high_mark:
             return '', ()
-        
-        self._fix_aggregates()
         
         self._using_row_number = False
         
@@ -148,13 +119,13 @@ class SQLCompiler(compiler.SQLCompiler):
             # unless TOP or FOR XML is also specified.
             try:
                 setattr(self.query, '_mssql_ordering_not_allowed', with_col_aliases)
-                result = super(SQLCompiler, self).as_sql(with_limits, with_col_aliases)
+                result = super(SQLCompiler, self).as_sql(with_limits, with_col_aliases, subquery=subquery)
             finally:
                 # remove in case query is every reused
                 delattr(self.query, '_mssql_ordering_not_allowed')
             return result
 
-        raw_sql, fields = super(SQLCompiler, self).as_sql(False, with_col_aliases)
+        raw_sql, fields = super(SQLCompiler, self).as_sql(False, with_col_aliases, subquery=subquery)
         
         # Check for high mark only and replace with "TOP"
         if self.query.high_mark is not None and not self.query.low_mark:
@@ -261,11 +232,8 @@ class SQLCompiler(compiler.SQLCompiler):
         return sql, fields
         
     def _select_top(self,select,inner_sql,number_to_fetch):
-        if self.connection.ops.is_db2:
-            return "{select} {inner_sql} FETCH FIRST {number_to_fetch} ROWS ONLY".format(
-                select=select, inner_sql=inner_sql, number_to_fetch=number_to_fetch)
-        else:
-            return "{select} TOP {number_to_fetch} {inner_sql}".format(
+        # rewrote by RF
+        return "{select} {inner_sql} LIMIT {number_to_fetch}".format(
                 select=select, inner_sql=inner_sql, number_to_fetch=number_to_fetch)
 
     def _fix_slicing_order(self, outer_fields, inner_select, order, inner_table_name):
@@ -597,13 +565,13 @@ class SQLInsertCompiler2(compiler.SQLInsertCompiler, SQLCompiler):
 class SQLDeleteCompiler(compiler.SQLDeleteCompiler, SQLCompiler):
     pass
 
+
 class SQLUpdateCompiler(compiler.SQLUpdateCompiler, SQLCompiler):
     pass
 
+
 class SQLAggregateCompiler(compiler.SQLAggregateCompiler, SQLCompiler):
-    def as_sql(self, qn=None):
-        self._fix_aggregates()
-        return super(SQLAggregateCompiler, self).as_sql(qn=qn)
+    pass
 
 # django's compiler.SQLDateCompiler was removed in 1.8
 if DjangoVersion[0] >= 1 and DjangoVersion[1] >= 8:

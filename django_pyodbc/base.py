@@ -90,7 +90,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     _DJANGO_VERSION = _DJANGO_VERSION
     drv_name = None
     driver_supports_utf8 = None
-    MARS_Connection = False
     unicode_results = False
     datefirst = 7
     Database = Database
@@ -136,7 +135,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         options = self.settings_dict.get('OPTIONS', None)
 
         if options:
-            self.MARS_Connection = options.get('MARS_Connection', False)
             self.datefirst = options.get('datefirst', 7)
             self.unicode_results = options.get('unicode_results', False)
             self.encoding = options.get('encoding', 'utf-8')
@@ -225,55 +223,28 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if 'driver' in options:
             driver = options['driver']
         else:
-            if os.name == 'nt':
-                driver = 'SQL Server'
-            else:
-                driver = 'FreeTDS'
-
-        if driver == 'FreeTDS' or driver.endswith('/libtdsodbc.so'):
-            driver_is_freetds = True
-        else:
-            driver_is_freetds = False
-
-        # Microsoft driver names assumed here are:
-        # * SQL Server
-        # * SQL Native Client
-        # * SQL Server Native Client 10.0/11.0
-        # * ODBC Driver 11 for SQL Server
-        ms_drivers = re.compile('.*SQL (Server$|(Server )?Native Client)')
+            raise ImproperlyConfigured("You need to specify 'driver':'EXASolution Driver' in your Django settings file.")
 
         if 'dsn' in options:
             cstr_parts.append('DSN=%s' % options['dsn'])
         else:
-            # Only append DRIVER if DATABASE_ODBC_DSN hasn't been set
-            if os.path.isabs(driver):
-                cstr_parts.append('DRIVER=%s' % driver)
-            else:
-                cstr_parts.append('DRIVER={%s}' % driver)
+            cstr_parts.append('DRIVER={%s}' % driver)
 
-            if ms_drivers.match(driver) or driver_is_freetds and \
-                    options.get('host_is_server', False):
-                if port_str:
-                    host_str += ';PORT=%s' % port_str
-                cstr_parts.append('SERVER=%s' % host_str)
-            else:
-                cstr_parts.append('SERVERNAME=%s' % host_str)
-
-        if user_str:
+        if user_str and passwd_str:
             cstr_parts.append('UID=%s;PWD=%s' % (user_str, passwd_str))
         else:
-            if ms_drivers.match(driver):
-                cstr_parts.append('Trusted_Connection=yes')
-            else:
-                cstr_parts.append('Integrated Security=SSPI')
+            raise ImproperlyConfigured("You need to specify 'USER' and 'PASSWORD' in your Django settings file.")
 
         cstr_parts.append('DATABASE=%s' % db_str)
 
-        if self.MARS_Connection:
-            cstr_parts.append('MARS_Connection=yes')
-
         if 'extra_params' in options:
             cstr_parts.append(options['extra_params'])
+
+        # enable efficient conversion to Python types: see https://www.exasol.com/support/browse/EXASOL-898
+        # unless explictly told otherwise
+        if not any('INTTYPESINRESULTSIFPOSSIBLE' in p for p in cstr_parts):
+            cstr_parts.append('INTTYPESINRESULTSIFPOSSIBLE=y')
+
         connectionstring = ';'.join(cstr_parts)
         return connectionstring
 
@@ -314,11 +285,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             ms_sqlncli = re.compile('^((LIB)?SQLN?CLI|LIBMSODBCSQL)')
             self.drv_name = self.connection.getinfo(Database.SQL_DRIVER_NAME).upper()
 
-            # http://msdn.microsoft.com/en-us/library/ms131686.aspx
-            if self.ops.sql_server_ver >= 2005 and ms_sqlncli.match(self.drv_name) and self.MARS_Connection:
-                # How to to activate it: Add 'MARS_Connection': True
-                # to the DATABASE_OPTIONS dictionary setting
-                self.features.can_use_chunked_reads = True
 
             if self.drv_name.startswith('LIBTDSODBC'):
                 # FreeTDS can't execute some sql queries like CREATE DATABASE etc.
@@ -428,12 +394,31 @@ class CursorWrapper(object):
         return tuple(fp)
 
     def execute(self, sql, params=()):
+
+        # JAMI: exasol wants all column names in uppercase, we convert to upper() the whole sql string
+        # and then fix the %s back to lower
+        sql = sql.upper().replace(r'%S', r'%s')
+
+        # JAMI: create a compiled_sql replacing all quoted parameters into their placeholders
+        # this is useful for debugging, and also for a db bug workaround (see below)
+        compiled_sql = str(sql % tuple("'%s'" % (p,) for p in params))
+        print "sql=", compiled_sql
+
         self.last_sql = sql
         sql = self.format_sql(sql, len(params))
         params = self.format_params(params)
         self.last_params = params
         try:
-            return self.cursor.execute(sql, params)
+            # JAMI: ugliest hack to workaround a bug in exasol: it doesn't like complex GROUP BY clauses
+            # in prepared statements... so for these particular queries, we cook the sql+params ourselves
+            # and send the final sql sentence
+            # JAMI: maybe the way to detect problematic queries is not the most elegant, but this should be
+            # a temporary hack until EXASol is fixed
+            if "LAST_DROP IS NOT NULL AND" in sql and '"RECENTLY_SOLDOUT"' in sql:
+                print "executing this exact sql: ", compiled_sql
+                return self.cursor.execute(compiled_sql)
+            else:
+                return self.cursor.execute(sql, params)
         except IntegrityError:
             e = sys.exc_info()[1]
             raise utils.IntegrityError(*e.args)
