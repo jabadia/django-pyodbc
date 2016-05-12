@@ -566,11 +566,11 @@ class SQLDeleteCompiler(compiler.SQLDeleteCompiler, SQLCompiler):
     pass
 
 
-class SQLAggregateCompiler(compiler.SQLAggregateCompiler, SQLCompiler):
+class SQLUpdateCompiler(compiler.SQLUpdateCompiler, SQLCompiler):
     pass
 
 
-class SQLUpdateCompiler(compiler.SQLUpdateCompiler, SQLCompiler):
+class SQLAggregateCompiler(compiler.SQLAggregateCompiler, SQLCompiler):
     pass
 
 # django's compiler.SQLDateCompiler was removed in 1.8
