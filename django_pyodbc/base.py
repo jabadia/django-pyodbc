@@ -433,7 +433,9 @@ class CursorWrapper(object):
 
     def execute(self, sql, params=()):
         # print "1. sql=", sql, "; params=",params
-        print "1. sql=", sql % tuple("'%s'" % (p,) for p in params)
+        sql = sql.replace(r'%S', r'%s')
+        compiled_sql = str(sql % tuple("'%s'" % (p,) for p in params))
+        print "1. sql=", compiled_sql
         self.last_sql = sql
         sql = self.format_sql(sql, len(params))
         # print "2. sql=", sql, "; params=",params
@@ -441,7 +443,14 @@ class CursorWrapper(object):
         self.last_params = params
         # print "3. sql=", sql, "; params=",params
         try:
-            return self.cursor.execute(sql, params)
+            # return self.cursor.execute(str(compiled_sql), ())
+            # print([(p,type(p)) for p in params])
+            # JAMI: ugliest hack to workaround a bug in exasol ODBC driver
+            if "last_drop IS NOT NULL AND" in sql and '"RECENTLY_SOLDOUT"' in sql:
+                print "executing this exact sql: ", compiled_sql
+                return self.cursor.execute(compiled_sql, ())
+            else:
+                return self.cursor.execute(sql,params)
         except IntegrityError:
             e = sys.exc_info()[1]
             raise utils.IntegrityError(*e.args)
