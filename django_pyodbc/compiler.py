@@ -235,13 +235,6 @@ class SQLCompiler(compiler.SQLCompiler):
         # rewrote by RF
         return "{select} {inner_sql} LIMIT {number_to_fetch}".format(
                 select=select, inner_sql=inner_sql, number_to_fetch=number_to_fetch)
-                
-        #if self.connection.ops.is_db2:
-        #    return "{select} {inner_sql} FETCH FIRST {number_to_fetch} ROWS ONLY".format(
-        #        select=select, inner_sql=inner_sql, number_to_fetch=number_to_fetch)
-        #else:
-        #    return "{select} TOP {number_to_fetch} {inner_sql}".format(
-        #        select=select, inner_sql=inner_sql, number_to_fetch=number_to_fetch)
 
     def _fix_slicing_order(self, outer_fields, inner_select, order, inner_table_name):
         """

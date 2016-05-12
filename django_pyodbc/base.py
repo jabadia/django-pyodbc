@@ -394,25 +394,31 @@ class CursorWrapper(object):
         return tuple(fp)
 
     def execute(self, sql, params=()):
-        # print "1. sql=", sql, "; params=",params
+
+        # JAMI: exasol wants all column names in uppercase, we convert to upper() the whole sql string
+        # and then fix the %s back to lower
         sql = sql.upper().replace(r'%S', r'%s')
+
+        # JAMI: create a compiled_sql replacing all quoted parameters into their placeholders
+        # this is useful for debugging, and also for a db bug workaround (see below)
         compiled_sql = str(sql % tuple("'%s'" % (p,) for p in params))
-        print "1. sql=", compiled_sql
+        print "sql=", compiled_sql
+
         self.last_sql = sql
         sql = self.format_sql(sql, len(params))
-        # print "2. sql=", sql, "; params=",params
         params = self.format_params(params)
         self.last_params = params
-        # print "3. sql=", sql, "; params=",params
         try:
-            # return self.cursor.execute(str(compiled_sql), ())
-            # print([(p,type(p)) for p in params])
-            # JAMI: ugliest hack to workaround a bug in exasol ODBC driver
+            # JAMI: ugliest hack to workaround a bug in exasol: it doesn't like complex GROUP BY clauses
+            # in prepared statements... so for these particular queries, we cook the sql+params ourselves
+            # and send the final sql sentence
+            # JAMI: maybe the way to detect problematic queries is not the most elegant, but this should be
+            # a temporary hack until EXASol is fixed
             if "LAST_DROP IS NOT NULL AND" in sql and '"RECENTLY_SOLDOUT"' in sql:
                 print "executing this exact sql: ", compiled_sql
-                return self.cursor.execute(compiled_sql, ())
+                return self.cursor.execute(compiled_sql)
             else:
-                return self.cursor.execute(sql,params)
+                return self.cursor.execute(sql, params)
         except IntegrityError:
             e = sys.exc_info()[1]
             raise utils.IntegrityError(*e.args)
