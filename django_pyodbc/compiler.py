@@ -165,10 +165,7 @@ class SQLCompiler(compiler.SQLCompiler):
             inner_as=inner_table_name,
         )
         
-        row_num_col = '{left_quote}_row_num{right_quote}'.format(
-            left_quote=self.connection.ops.left_sql_quote,
-            right_quote=self.connection.ops.right_sql_quote
-        )
+        row_num_col = self.connection.ops.quote_name('_row_num')
         where_row_num = '{0} < {row_num_col}'.format(self.query.low_mark, row_num_col=row_num_col)
         if self.query.high_mark:
             where_row_num += ' and {row_num_col} <= {0}'.format(self.query.high_mark, row_num_col=row_num_col)

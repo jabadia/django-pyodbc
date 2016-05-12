@@ -410,7 +410,7 @@ class CursorWrapper(object):
             # and send the final sql sentence
             # JAMI: maybe the way to detect problematic queries is not the most elegant, but this should be
             # a temporary hack until EXASol is fixed
-            if "AND LAST_DROP IS NOT NULL AND" in sql and '[RECENTLY_SOLDOUT]' in sql:
+            if "AND LAST_DROP IS NOT NULL AND" in sql and '"RECENTLY_SOLDOUT"' in sql:
                 print "executing this exact sql: ", compiled_sql
                 return self.cursor.execute(compiled_sql)
             else:

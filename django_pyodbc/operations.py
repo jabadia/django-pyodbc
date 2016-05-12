@@ -29,31 +29,30 @@ class DatabaseOperations(BaseDatabaseOperations):
         self.connection = connection
         self._ss_ver = None
         self._ss_edition = None
-        self._is_db2 = False
 
     @property
     def left_sql_quote(self):
-        return '['
+        return '"'
     
     @property
     def right_sql_quote(self):
-        return ']'
+        return '"'
 
     def _get_sql_server_ver(self):
+        # JAMI: TODO: remove this as well
         """
         Returns the version of the SQL Server in use:
         """
-        # JAMI: TODO: remove this as well
         if self._ss_ver is not None:
             return self._ss_ver
         cur = self.connection.cursor()
         ver_code = None
-        if not self.is_db2:
-            # commented out by RF
-            pass
-            #cur.execute("SELECT CAST(SERVERPROPERTY('ProductVersion') as varchar)")
-            #ver_code = cur.fetchone()[0]
-            #ver_code = int(ver_code.split('.')[0])
+        # if not self.is_db2:
+        #     # commented out by RF
+        #     pass
+        #     #cur.execute("SELECT CAST(SERVERPROPERTY('ProductVersion') as varchar)")
+        #     #ver_code = cur.fetchone()[0]
+        #     #ver_code = int(ver_code.split('.')[0])
         if ver_code >= 11:
             self._ss_ver = 2012
         elif ver_code == 10:
