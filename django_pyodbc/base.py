@@ -274,10 +274,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             # Django convention for the 'week_day' Django lookup) if the user
             # hasn't told us otherwise
 
-            if not self.ops.is_db2:
-                # IBM's DB2 doesn't support this syntax and a suitable
-                # equivalent could not be found.
-                cursor.execute("SET DATEFORMAT ymd; SET DATEFIRST %s" % self.datefirst)
             if self.ops.sql_server_ver < 2005:
                 self.creation.data_types['TextField'] = 'ntext'
                 self.features.can_return_id_from_insert = False
@@ -414,7 +410,7 @@ class CursorWrapper(object):
             # and send the final sql sentence
             # JAMI: maybe the way to detect problematic queries is not the most elegant, but this should be
             # a temporary hack until EXASol is fixed
-            if "LAST_DROP IS NOT NULL AND" in sql and '"RECENTLY_SOLDOUT"' in sql:
+            if "AND LAST_DROP IS NOT NULL AND" in sql and '[RECENTLY_SOLDOUT]' in sql:
                 print "executing this exact sql: ", compiled_sql
                 return self.cursor.execute(compiled_sql)
             else:

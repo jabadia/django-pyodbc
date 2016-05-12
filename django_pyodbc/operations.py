@@ -29,39 +29,21 @@ class DatabaseOperations(BaseDatabaseOperations):
         self.connection = connection
         self._ss_ver = None
         self._ss_edition = None
-        self._is_db2 = None
-        
-    @property
-    def is_db2(self):
-        if self._is_db2 is None:
-            cur = self.connection.cursor()
-            try:
-                # commented out by RF
-                #cur.execute("SELECT * FROM SYSIBM.COLUMNS FETCH FIRST 1 ROWS ONLY")
-                self._is_db2 = True
-            except Exception:
-                self._is_db2 = False
+        self._is_db2 = False
 
-        return self._is_db2
-    
     @property
     def left_sql_quote(self):
-        if self.is_db2:
-            return '{'
-        else:
-            return '['
+        return '['
     
     @property
     def right_sql_quote(self):
-        if self.is_db2:
-            return '}'
-        else:
-            return ']'
+        return ']'
 
     def _get_sql_server_ver(self):
         """
         Returns the version of the SQL Server in use:
         """
+        # JAMI: TODO: remove this as well
         if self._ss_ver is not None:
             return self._ss_ver
         cur = self.connection.cursor()
@@ -84,6 +66,7 @@ class DatabaseOperations(BaseDatabaseOperations):
     sql_server_ver = property(_get_sql_server_ver)
 
     def _on_azure_sql_db(self):
+        # JAMI: TODO: remove this as well
         if self._ss_edition is not None:
             return self._ss_edition == EDITION_AZURE_SQL_DB
         cur = self.connection.cursor()
@@ -222,13 +205,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         Returns a quoted version of the given table, index or column name. Does
         not quote the given name if it's already been quoted.
         """
-        #if name.startswith(self.left_sql_quote) and name.endswith(self.right_sql_quote):
-        #    return name # Quoting once is enough.
-        #return '%s%s%s' % (self.left_sql_quote, name, self.right_sql_quote)
-        # changed by RF
-        if name.startswith('"') and name.endswith('"'):
-            return name # Quoting once is enough.
-        return '%s%s%s' % ('"', name.upper(), '"')  # changed by RF
+        if name.startswith(self.left_sql_quote) and name.endswith(self.right_sql_quote):
+           return name # Quoting once is enough.
+        return '%s%s%s' % (self.left_sql_quote, name, self.right_sql_quote)
 
     def random_function_sql(self):
         """
