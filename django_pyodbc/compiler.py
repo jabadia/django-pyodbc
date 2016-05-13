@@ -129,16 +129,10 @@ class SQLCompiler(compiler.SQLCompiler):
         
         # Check for high mark only and replace with "TOP"
         if self.query.high_mark is not None and not self.query.low_mark:
-            if self.connection.ops.is_db2:
-                sql = self._select_top('', raw_sql, self.query.high_mark)
-            else:
-                _select = 'SELECT'
-                if self.query.distinct:
-                    _select += ' DISTINCT'
-                sql = re.sub(r'(?i)^{0}'.format(_select), '{0} TOP {1}'.format(_select, self.query.high_mark), raw_sql, 1)
-            return sql, fields
-            
+            sql =  "{raw_sql} LIMIT {number_to_fetch}".format(raw_sql=raw_sql, number_to_fetch=self.query.high_mark)
+
         # Else we have limits; rewrite the query using ROW_NUMBER()
+        # JAMI: TODO: find a better way to execute queries with limits in exasol
         self._using_row_number = True
 
         # Lop off ORDER... and the initial "SELECT"
@@ -171,63 +165,19 @@ class SQLCompiler(compiler.SQLCompiler):
             inner_as=inner_table_name,
         )
         
-        # IBM's DB2 cannot have a prefix of `_` for column names
-        row_num_col = 'django_pyodbc_row_num' if self.connection.ops.is_db2 else '_row_num'
+        row_num_col = self.connection.ops.quote_name('_row_num')
         where_row_num = '{0} < {row_num_col}'.format(self.query.low_mark, row_num_col=row_num_col)
         if self.query.high_mark:
             where_row_num += ' and {row_num_col} <= {0}'.format(self.query.high_mark, row_num_col=row_num_col)
         
-        # SQL Server 2000 doesn't support the `ROW_NUMBER()` function, thus it
-        # is necessary to use the `TOP` construct with `ORDER BY` so we can
-        # slice out a particular range of results.
-        if self.connection.ops.sql_server_ver < 2005 and not self.connection.ops.is_db2:
-            num_to_select = self.query.high_mark - self.query.low_mark
-            order_by_col_with_prefix,order_direction = order.rsplit(' ',1)
-            order_by_col = order_by_col_with_prefix.rsplit('.',1)[-1]
-            opposite_order_direction = REV_ODIR[order_direction]
-            sql = r'''
-                SELECT 
-                1, -- placeholder for _row_num
-                * FROM
-                (
-                    SELECT TOP
-                    -- num_to_select
-                    {num_to_select}
-                    *
-                    FROM
-                    (
-                        SELECT TOP 
-                        -- high_mark
-                        {high_mark}
-                        -- inner
-                        {inner}
-                        ORDER BY (
-                        -- order_by_col
-                        {left_sql_quote}AAAA{right_sql_quote}.{order_by_col}
-                        ) 
-                        -- order_direction
-                        {order_direction}
-                    ) AS BBBB ORDER BY ({left_sql_quote}BBBB{right_sql_quote}.{order_by_col}) {opposite_order_direction}
-                ) AS QQQQ ORDER BY ({left_sql_quote}QQQQ{right_sql_quote}.{order_by_col}) {order_direction}
-                '''.format(
-                    inner=inner_select,
-                    num_to_select=num_to_select,
-                    high_mark=self.query.high_mark,
-                    order_by_col=order_by_col,
-                    order_direction=order_direction,
-                    opposite_order_direction=opposite_order_direction,
-                    left_sql_quote=self.connection.ops.left_sql_quote,
-                    right_sql_quote=self.connection.ops.right_sql_quote,
-                )
-        else:
-            sql = "SELECT {row_num_col}, {outer} FROM ( SELECT ROW_NUMBER() OVER ( ORDER BY {order}) as {row_num_col}, {inner}) as QQQ where {where}".format(
-                outer=outer_fields,
-                order=order,
-                inner=inner_select,
-                where=where_row_num,
-                row_num_col=row_num_col
-            )
-        
+        sql = "SELECT {row_num_col}, {outer} FROM ( SELECT ROW_NUMBER() OVER ( ORDER BY {order}) as {row_num_col}, {inner}) as QQQ where {where}".format(
+            outer=outer_fields,
+            order=order,
+            inner=inner_select,
+            where=where_row_num,
+            row_num_col=row_num_col
+        )
+
         
         return sql, fields
         
