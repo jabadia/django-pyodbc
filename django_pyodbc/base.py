@@ -191,6 +191,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return conn_params
 
     def get_new_connection(self, conn_params):
+        assert False, "JAMI: I think this method is never used"
         return Database.connect(**conn_params)
 
     def init_connection_state(self):
