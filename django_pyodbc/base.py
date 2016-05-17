@@ -191,6 +191,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return conn_params
 
     def get_new_connection(self, conn_params):
+        assert False, "JAMI: I think this method is never used"
         return Database.connect(**conn_params)
 
     def init_connection_state(self):
@@ -219,16 +220,15 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         if not db_str:
             raise ImproperlyConfigured('You need to specify NAME in your Django settings file.')
 
+        # JAMI: TODO: review this logic of drivers and dsns
         cstr_parts = []
-        if 'driver' in options:
-            driver = options['driver']
-        else:
-            raise ImproperlyConfigured("You need to specify 'driver':'EXASolution Driver' in your Django settings file.")
 
         if 'dsn' in options:
             cstr_parts.append('DSN=%s' % options['dsn'])
+        elif 'driver' in options:
+            cstr_parts.append('DRIVER={%s}' % options['driver'])
         else:
-            cstr_parts.append('DRIVER={%s}' % driver)
+            raise ImproperlyConfigured("You need to specify the ODBC 'driver' or ODBC 'dsn' in your Django settings file.")
 
         if user_str and passwd_str:
             cstr_parts.append('UID=%s;PWD=%s' % (user_str, passwd_str))
