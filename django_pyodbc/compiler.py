@@ -1,4 +1,7 @@
 import re
+import tempfile
+from collections import OrderedDict
+
 from django.db.models.sql import compiler
 from django import VERSION as DjangoVersion
 
@@ -15,7 +18,64 @@ _re_data_type_terminator = re.compile(
 )
 
 class SQLCompiler(compiler.SQLCompiler):
-    pass
+    _re_advanced_group_by =  re.compile(r'GROUP BY(.*%s.*)((ORDER BY)|(LIMIT))?', re.MULTILINE)
+
+    def as_sql(self, with_limits=True, with_col_aliases=False, subquery=False):
+        sql, params = super(SQLCompiler, self).as_sql(with_limits, with_col_aliases, subquery)
+
+        if self._re_advanced_group_by.search(sql) is not None:
+            print "GROUP BY with parameters found: we need to rewrite the sql"
+
+            # we need to rewrite queries that have parameters inside the GROUP BY clause, such as this one:
+            #
+            #   sql = """SELECT (first_seen >= %s), COUNT(*) FROM "TABLEAU_ALL" GROUP BY (first_seen >= %s)"""
+            #   params = ['2016-05-04', '2016-05-04']
+            #
+            # to this
+            #
+            #   sql = """
+            #       WITH tmp AS (SELECT %s as p0)
+            #           SELECT(first_seen >= p0), COUNT(*)
+            #           FROM "TABLEAU_ALL", tmp
+            #           GROUP BY(first_seen >= p0)
+            #   """
+            #   params = ['2016-05-04']
+            #
+
+            # first, we generate a sequence of unique parameter names p0, p1... for each individual parameter
+            param_names = map(lambda (i, p): 'p%d' % (i,), enumerate(params))
+            named_params = OrderedDict()
+            for i, (param_name, param_value) in enumerate(zip(param_names, params)):
+                # for every parameter, find the first parameter in the list that has the same value
+                param_names[i] = next(name for (name,value) in zip(param_names, params) if value==param_value)
+                # for these repeated parameters, we will use the first name:
+                # if a value appears twice (for instance p3 and p5 have the same value), we will use p3 in both places
+                named_params[param_names[i]] = param_value
+                # print i, param_name, param_value, param_names[i]
+
+            # param_names has a list of replacements for each of the %s in the original query with the correct parameter name
+            # named_params has an ordered dict of parameters with unique values
+
+            # generate a unique temporary name
+            tmp_name = '"TMP_%s"' % (next(tempfile._get_candidate_names()),)
+
+            # generate the first part of the sql sentence: a %s placeholder for each named parameter
+            with_sql = 'WITH {tmp_name} AS (SELECT {named_params})'.format(
+                tmp_name=tmp_name,
+                named_params=", ".join(map(lambda name: '%s AS {name}'.format(name=name), named_params.keys()))
+            )
+
+            # replace %s placeholders with their corresponding named parameters
+            for named_param in param_names:
+                sql = sql.replace('%s', tmp_name + "." + named_param, 1)
+
+            # combine the two sql parts into a single statement
+            sql = with_sql + ' ' + sql.replace('FROM ', 'FROM {tmp_name}, '.format(tmp_name=tmp_name))
+
+            # new param list contains only one item for each distinct parameter value
+            params = named_params.values()
+
+        return sql, params
 
 
 class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
