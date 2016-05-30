@@ -89,8 +89,6 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 class DatabaseWrapper(BaseDatabaseWrapper):
     _DJANGO_VERSION = _DJANGO_VERSION
     drv_name = None
-    driver_supports_utf8 = None
-    unicode_results = False
     datefirst = 7
     Database = Database
     limit_table_list = False
@@ -136,9 +134,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         if options:
             self.datefirst = options.get('datefirst', 7)
-            self.unicode_results = options.get('unicode_results', False)
             self.encoding = options.get('encoding', 'utf-8')
-            self.driver_supports_utf8 = options.get('driver_supports_utf8', None)
             self.driver_needs_utf8 = options.get('driver_needs_utf8', None)
             self.limit_table_list = options.get('limit_table_list', False)
 
@@ -258,13 +254,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             connstr = self._get_connection_string()#';'.join(cstr_parts)
             options = settings_dict['OPTIONS']
             autocommit = options.get('autocommit', False)
-            if self.unicode_results:
-                self.connection = Database.connect(connstr, \
-                        autocommit=autocommit, \
-                        unicode_results='True')
-            else:
-                self.connection = Database.connect(connstr, \
-                        autocommit=autocommit)
+            self.connection = Database.connect(connstr, autocommit=autocommit)
             connection_created.send(sender=self.__class__, connection=self)
 
         cursor = self.connection.cursor()
@@ -289,24 +279,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 if not self.connection.autocommit:
                     self.connection.commit()
 
-                freetds_version = self.connection.getinfo(Database.SQL_DRIVER_VER)
-                if self.driver_supports_utf8 is None:
-                    try:
-                        from distutils.version import LooseVersion
-                    except ImportError:
-                        warnings.warn(Warning('Using naive FreeTDS version detection. Install distutils to get better version detection.'))
-                        self.driver_supports_utf8 = not freetds_version.startswith('0.82')
-                    else:
-                        # This is the minimum version that properly supports
-                        # Unicode. Though it started in version 0.82, the
-                        # implementation in that version was buggy.
-                        self.driver_supports_utf8 = LooseVersion(freetds_version) >= LooseVersion('0.91')
-
-            elif self.driver_supports_utf8 is None:
-                self.driver_supports_utf8 = (self.drv_name == 'SQLSRV32.DLL'
-                                             or ms_sqlncli.match(self.drv_name))
-
-        return CursorWrapper(cursor, self.driver_supports_utf8, self.encoding)
+        return CursorWrapper(cursor, self.encoding)
 
     def _execute_foreach(self, sql, table_names=None):
         cursor = self.cursor()
@@ -335,9 +308,8 @@ class CursorWrapper(object):
     A wrapper around the pyodbc's cursor that takes in account a) some pyodbc
     DB-API 2.0 implementation and b) some common ODBC driver particularities.
     """
-    def __init__(self, cursor, driver_supports_utf8, encoding=""):
+    def __init__(self, cursor, encoding=""):
         self.cursor = cursor
-        self.driver_supports_utf8 = driver_supports_utf8
         self.last_sql = ''
         self.last_params = ()
         self.encoding = encoding
@@ -349,9 +321,7 @@ class CursorWrapper(object):
             pass
 
     def format_sql(self, sql, n_params=None):
-        if not self.driver_supports_utf8 and isinstance(sql, text_type):
-            # Older FreeTDS (and other ODBC drivers?) don't support Unicode yet, so
-            # we need to encode the SQL clause itself in utf-8
+        if isinstance(sql, text_type):
             sql = sql.encode('utf-8')
         # pyodbc uses '?' instead of '%s' as parameter placeholder.
         if n_params is not None:
@@ -368,18 +338,10 @@ class CursorWrapper(object):
     def format_params(self, params):
         fp = []
         for p in params:
-            if isinstance(p, text_type):
-                if not self.driver_supports_utf8:
-                    # Older FreeTDS (and other ODBC drivers?) doesn't support Unicode
-                    # yet, so we need to encode parameters in utf-8
-                    fp.append(p.encode('utf-8'))
-                else:
-                    fp.append(p)
-            elif isinstance(p, binary_type):
-                if not self.driver_supports_utf8:
-                    fp.append(p.decode(self.encoding).encode('utf-8'))
-                else:
-                    fp.append(p)
+            if isinstance(p, text_type):        # unicode
+                fp.append(p.encode('utf-8'))
+            elif isinstance(p, binary_type):    # str
+                fp.append(p.decode(self.encoding).encode('utf-8'))
             elif isinstance(p, type(True)):
                 if p:
                     fp.append(1)
@@ -438,15 +400,10 @@ class CursorWrapper(object):
         (pyodbc Rows are not sliceable).
         """
         needs_utc = _DJANGO_VERSION >= 14 and settings.USE_TZ
-        if not (needs_utc or not self.driver_supports_utf8):
-            return tuple(rows)
-        # FreeTDS (and other ODBC drivers?) don't support Unicode yet, so we
-        # need to decode UTF-8 data coming from the DB
         fr = []
         for row in rows:
-            if not self.driver_supports_utf8 and isinstance(row, binary_type):
+            if isinstance(row, binary_type):
                 row = row.decode(self.encoding)
-
             elif needs_utc and isinstance(row, datetime.datetime):
                 row = row.replace(tzinfo=timezone.utc)
             fr.append(row)
