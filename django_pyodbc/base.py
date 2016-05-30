@@ -359,8 +359,8 @@ class CursorWrapper(object):
 
         # JAMI: create a compiled_sql replacing all quoted parameters into their placeholders
         # this is useful for debugging
-        compiled_sql = (sql % tuple("'%s'" % (p,) for p in params)).encode('utf-8')
-        print "sql=", compiled_sql
+        # compiled_sql = (sql % tuple("'%s'" % (p,) for p in params)).encode('utf-8')
+        # print "sql=", compiled_sql
 
         self.last_sql = sql
         sql = self.format_sql(sql, len(params))
