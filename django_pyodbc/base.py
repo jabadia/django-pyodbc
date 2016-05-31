@@ -2,10 +2,8 @@
 MS SQL Server database backend for Django.
 """
 import datetime
-import os
 import re
 import sys
-import warnings
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -200,26 +198,29 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def _get_connection_string(self):
         settings_dict = self.settings_dict
-        db_str, user_str, passwd_str, port_str = None, None, "", None
+        db_str, user_str, passwd_str, host_str, port_str = None, None, "", None, None
         options = settings_dict['OPTIONS']
         if settings_dict['NAME']:
             db_str = settings_dict['NAME']
-        if settings_dict['HOST']:
-            host_str = settings_dict['HOST']
-        else:
-            host_str = 'localhost'
         if settings_dict['USER']:
             user_str = settings_dict['USER']
         if settings_dict['PASSWORD']:
             passwd_str = settings_dict['PASSWORD']
+        if settings_dict['HOST']:
+            host_str = settings_dict['HOST']
         if settings_dict['PORT']:
             port_str = settings_dict['PORT']
 
-        if not db_str:
+
+        cstr_parts = []
+
+        if db_str:
+            cstr_parts.append('DATABASE=%s' % db_str)
+        else:
             raise ImproperlyConfigured('You need to specify NAME in your Django settings file.')
 
-        # JAMI: TODO: review this logic of drivers and dsns
-        cstr_parts = []
+        # parse extra params connection string into a dict of keys and values
+        extra_params = {k:v for k,v in [param.split('=') for param in options.get('extra_params','').split(';')]}
 
         if 'dsn' in options:
             cstr_parts.append('DSN=%s' % options['dsn'])
@@ -233,10 +234,17 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         else:
             raise ImproperlyConfigured("You need to specify 'USER' and 'PASSWORD' in your Django settings file.")
 
-        cstr_parts.append('DATABASE=%s' % db_str)
+        if host_str:
+            if 'EXAHOST' in extra_params:
+                raise ImproperlyConfigured("Either specify HOST and PORT settings or EXAHOST in extra_params but not both")
+            else:
+                if ':' in host_str:
+                    host_str, port_str = host_str.split(':')
+                port_str = unicode(port_str) or '8563'                      # default exasol port
+                cstr_parts.append('EXAHOST=%s:%s' % (host_str, port_str))
 
-        if 'extra_params' in options:
-            cstr_parts.append(options['extra_params'])
+
+        cstr_parts.extend(["%s=%s" % (k,v) for k,v in extra_params.items()])
 
         # enable efficient conversion to Python types: see https://www.exasol.com/support/browse/EXASOL-898
         # unless explictly told otherwise
@@ -257,12 +265,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             options = settings_dict['OPTIONS']
             autocommit = options.get('autocommit', False)
             if self.unicode_results:
-                self.connection = Database.connect(connstr, \
-                        autocommit=autocommit, \
-                        unicode_results='True')
+                self.connection = Database.connect(connstr, autocommit=autocommit, unicode_results='True')
             else:
-                self.connection = Database.connect(connstr, \
-                        autocommit=autocommit)
+                self.connection = Database.connect(connstr, autocommit=autocommit)
             connection_created.send(sender=self.__class__, connection=self)
 
         cursor = self.connection.cursor()
