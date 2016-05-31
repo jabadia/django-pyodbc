@@ -205,8 +205,9 @@ class DatabaseOperations(BaseDatabaseOperations):
         not quote the given name if it's already been quoted.
         """
         if name.startswith(self.left_sql_quote) and name.endswith(self.right_sql_quote):
-           return name # Quoting once is enough.
-        return '%s%s%s' % (self.left_sql_quote, name, self.right_sql_quote)
+            return name # Quoting once is enough.
+        return '.'.join(['%s%s%s' % (self.left_sql_quote, piece.upper(), self.right_sql_quote)
+                         for piece in name.split('.')])
 
     def random_function_sql(self):
         """
