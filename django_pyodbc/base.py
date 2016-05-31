@@ -238,7 +238,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             if 'EXAHOST' in extra_params:
                 raise ImproperlyConfigured("Either specify HOST and PORT settings or EXAHOST in extra_params but not both")
             else:
-                port_str = unicode(port_str) or '8563'
+                if ':' in host_str:
+                    host_str, port_str = host_str.split(':')
+                port_str = unicode(port_str) or '8563'                      # default exasol port
                 cstr_parts.append('EXAHOST=%s:%s' % (host_str, port_str))
 
 
