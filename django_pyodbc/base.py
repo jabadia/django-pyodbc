@@ -355,7 +355,9 @@ class CursorWrapper(object):
 
         # JAMI: exasol wants all column names in uppercase, we convert to upper() the whole sql string
         # and then fix the %s back to lower
-        sql = sql.upper().replace(r'%S', r'%s')
+        # sql = sql.upper().replace(r'%S', r'%s')
+        # JAMI - UPDATE: instead of converting the whole SQL string, we do selective upper() in table/column/index
+        # identifiers (see django_pyodbc.operations.DatabaseOperations#quote_name method)
 
         # JAMI: create a compiled_sql replacing all quoted parameters into their placeholders
         # this is useful for debugging
