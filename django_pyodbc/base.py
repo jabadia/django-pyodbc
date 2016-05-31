@@ -89,6 +89,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 class DatabaseWrapper(BaseDatabaseWrapper):
     _DJANGO_VERSION = _DJANGO_VERSION
     drv_name = None
+    unicode_results = False
     datefirst = 7
     Database = Database
     limit_table_list = False
@@ -134,6 +135,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
         if options:
             self.datefirst = options.get('datefirst', 7)
+            self.unicode_results = options.get('unicode_results', False)
             self.encoding = options.get('encoding', 'utf-8')
             self.driver_needs_utf8 = options.get('driver_needs_utf8', None)
             self.limit_table_list = options.get('limit_table_list', False)
@@ -254,7 +256,13 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             connstr = self._get_connection_string()#';'.join(cstr_parts)
             options = settings_dict['OPTIONS']
             autocommit = options.get('autocommit', False)
-            self.connection = Database.connect(connstr, autocommit=autocommit)
+            if self.unicode_results:
+                self.connection = Database.connect(connstr, \
+                        autocommit=autocommit, \
+                        unicode_results='True')
+            else:
+                self.connection = Database.connect(connstr, \
+                        autocommit=autocommit)
             connection_created.send(sender=self.__class__, connection=self)
 
         cursor = self.connection.cursor()
