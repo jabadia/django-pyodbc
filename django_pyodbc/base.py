@@ -186,9 +186,17 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             conn_params['port'] = settings_dict['PORT']
         return conn_params
 
-    def get_new_connection(self, conn_params):
-        assert False, "JAMI: I think this method is never used"
-        return Database.connect(**conn_params)
+    def get_new_connection(self, conn_params=None):
+        # assert False, "JAMI: I think this method is never used" # bad assumption
+        assert conn_params is None, "JAMI: We don't use conn_params that come from outside... should we?"
+        connstr = self._get_connection_string()
+        options = self.settings_dict['OPTIONS']
+        autocommit = options.get('autocommit', False)
+        if self.unicode_results:
+            connection = Database.connect(connstr, autocommit=autocommit, unicode_results='True')
+        else:
+            connection = Database.connect(connstr, autocommit=autocommit)
+        return connection
 
     def init_connection_state(self):
         pass
@@ -256,18 +264,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def _cursor(self):
         new_conn = False
-        settings_dict = self.settings_dict
-
-
         if self.connection is None:
             new_conn = True
-            connstr = self._get_connection_string()#';'.join(cstr_parts)
-            options = settings_dict['OPTIONS']
-            autocommit = options.get('autocommit', False)
-            if self.unicode_results:
-                self.connection = Database.connect(connstr, autocommit=autocommit, unicode_results='True')
-            else:
-                self.connection = Database.connect(connstr, autocommit=autocommit)
+            self.connection = self.get_new_connection()
             connection_created.send(sender=self.__class__, connection=self)
 
         cursor = self.connection.cursor()
