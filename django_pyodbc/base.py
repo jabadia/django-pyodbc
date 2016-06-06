@@ -186,9 +186,17 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             conn_params['port'] = settings_dict['PORT']
         return conn_params
 
-    def get_new_connection(self, conn_params):
-        assert False, "JAMI: I think this method is never used"
-        return Database.connect(**conn_params)
+    def get_new_connection(self, conn_params=None):
+        # assert False, "JAMI: I think this method is never used" # bad assumption
+        assert conn_params is None, "JAMI: We don't use conn_params that come from outside... should we?"
+        connstr = self._get_connection_string()
+        options = self.settings_dict['OPTIONS']
+        autocommit = options.get('autocommit', False)
+        if self.unicode_results:
+            connection = Database.connect(connstr, autocommit=autocommit, unicode_results='True')
+        else:
+            connection = Database.connect(connstr, autocommit=autocommit)
+        return connection
 
     def init_connection_state(self):
         pass
@@ -255,43 +263,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return connectionstring
 
     def _cursor(self):
-        new_conn = False
-        settings_dict = self.settings_dict
-
-
         if self.connection is None:
-            new_conn = True
-            connstr = self._get_connection_string()#';'.join(cstr_parts)
-            options = settings_dict['OPTIONS']
-            autocommit = options.get('autocommit', False)
-            if self.unicode_results:
-                self.connection = Database.connect(connstr, autocommit=autocommit, unicode_results='True')
-            else:
-                self.connection = Database.connect(connstr, autocommit=autocommit)
+            self.connection = self.get_new_connection()
+            # JAMI: shouldn't we send the signal from within get_new_connection() ?
             connection_created.send(sender=self.__class__, connection=self)
 
         cursor = self.connection.cursor()
-        if new_conn:
-            # Set date format for the connection. Also, make sure Sunday is
-            # considered the first day of the week (to be consistent with the
-            # Django convention for the 'week_day' Django lookup) if the user
-            # hasn't told us otherwise
-
-            if self.ops.sql_server_ver < 2005:
-                self.creation.data_types['TextField'] = 'ntext'
-                self.features.can_return_id_from_insert = False
-
-            ms_sqlncli = re.compile('^((LIB)?SQLN?CLI|LIBMSODBCSQL)')
-            self.drv_name = self.connection.getinfo(Database.SQL_DRIVER_NAME).upper()
-
-
-            if self.drv_name.startswith('LIBTDSODBC'):
-                # FreeTDS can't execute some sql queries like CREATE DATABASE etc.
-                # in multi-statement, so we need to commit the above SQL sentence(s)
-                # to avoid this
-                if not self.connection.autocommit:
-                    self.connection.commit()
-
         return CursorWrapper(cursor, self.encoding)
 
     def _execute_foreach(self, sql, table_names=None):
