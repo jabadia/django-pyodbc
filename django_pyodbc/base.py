@@ -120,8 +120,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         # TODO: remove, keep native T-SQL LIKE wildcards support
         # or use a "compatibility layer" and replace '*' with '%'
         # and '.' with '_'
-        'regex': 'LIKE %s',
-        'iregex': 'LIKE %s',
+        'regex': 'REGEXP_LIKE %s',
+        'iregex': "REGEXP_LIKE '(?i)' || %s",
 
         # TODO: freetext, full-text contains...
     }
