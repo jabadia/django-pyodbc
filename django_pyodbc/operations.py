@@ -338,8 +338,11 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def prep_for_like_query(self, x):
         """Prepares a value for use in a LIKE query."""
-        # http://msdn2.microsoft.com/en-us/library/ms179859.aspx
-        return smart_text(x).replace('\\', '\\\\').replace('[', '[[]').replace('%', '[%]').replace('_', '[_]')
+        # see EXASolution_User_Manual_5.0.13-en.pdf, section 2.7.2 List of predicates: [NOT] LIKE
+        # _ and % have special meaning inside LIKE comparisons...
+        # if they appear in the search string we need to escape them
+        return smart_text(x).replace(r'_', r'\_').replace(r'%', r'\%')
+        return x
 
     def prep_for_iexact_query(self, x):
         """
